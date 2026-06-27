@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Meeting Face HUD MVP</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Meeting Face HUD</p>
+          <h1>Recognize known attendees and show context in a glasses HUD.</h1>
+        </div>
+        <div class="status" id="apiStatus">Connecting</div>
+      </section>
+
+      <section class="workspace">
+        <div class="panel roster-panel">
+          <div class="panel-head">
+            <h2>Known People</h2>
+            <span id="peopleCount">0</span>
+          </div>
+
+          <form id="personForm" class="person-form">
+            <label>
+              Name
+              <input name="name" autocomplete="name" placeholder="e.g. Jamie Wong" required>
+            </label>
+            <label>
+              Company
+              <input name="company" autocomplete="organization" placeholder="e.g. Acme Robotics">
+            </label>
+            <label>
+              Title
+              <input name="title" placeholder="e.g. VP Sales">
+            </label>
+            <label>
+              Note
+              <textarea name="note" rows="3" placeholder="What should the glasses remind you?"></textarea>
+            </label>
+            <label>
+              Reference face photos
+              <input name="referencePhotos" type="file" accept="image/*" multiple>
+            </label>
+            <button type="submit">Add Person</button>
+          </form>
+
+          <div class="people-list" id="peopleList"></div>
+        </div>
+
+        <div class="panel test-panel">
+          <div class="panel-head">
+            <h2>Meeting View</h2>
+            <span>Face recognition</span>
+          </div>
+
+          <div class="camera-actions">
+            <button id="startCameraButton" type="button">Start Camera</button>
+            <button id="captureButton" type="button" disabled>Capture Frame</button>
+          </div>
+
+          <div class="preview-wrap live-preview">
+            <video id="cameraPreview" autoplay playsinline muted></video>
+            <img id="photoPreview" alt="Uploaded meeting preview">
+            <div class="empty-preview" id="emptyPreview">Start camera or upload a photo</div>
+          </div>
+
+          <label class="upload-zone" id="uploadZone">
+            <input id="photoInput" type="file" accept="image/*">
+            <span>Upload a test meeting photo instead</span>
+          </label>
+
+          <div class="recognition-controls">
+            <button id="recognizeButton" type="button" disabled>Recognize Captured Face</button>
+          </div>
+
+          <div class="result" id="resultBox">
+            Add reference face photos, capture from camera, then run recognition.
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="hud" id="hud">
+      <div class="hud-frame">
+        <div class="hud-label">HUD</div>
+        <div class="hud-name" id="hudName">Ready</div>
+        <div class="hud-title" id="hudTitle">No person recognized</div>
+        <div class="hud-note" id="hudNote">Upload a photo to simulate the glasses overlay.</div>
+        <div class="hud-confidence" id="hudConfidence">--</div>
+      </div>
+    </aside>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

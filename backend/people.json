@@ -1,0 +1,16 @@
+[
+  {
+    "id": "demo-alex",
+    "name": "Alex Chen",
+    "company": "Northstar Labs",
+    "title": "Product Lead",
+    "note": "Ask about pilot budget and procurement timing."
+  },
+  {
+    "id": "demo-maya",
+    "name": "Maya Patel",
+    "company": "Orbit Health",
+    "title": "Head of Ops",
+    "note": "Prefers concise updates and clear next actions."
+  }
+]
