@@ -1,4 +1,4 @@
-# Meeting Face HUD MVP
+# Who's That
 
 Local Web MVP for a meeting-assistant glasses flow:
 

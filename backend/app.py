@@ -149,6 +149,5 @@ class AppHandler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     ensure_data()
     server = ThreadingHTTPServer(("127.0.0.1", 8000), AppHandler)
-    print("Meeting Face HUD MVP running at http://127.0.0.1:8000")
+    print("Who's That running at http://127.0.0.1:8000")
     server.serve_forever()
-
