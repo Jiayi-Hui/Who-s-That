@@ -6,3 +6,4 @@ backend/uploads/*
 backend/data/
 .venv/
 dist/
+.vercel
