@@ -5,3 +5,4 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 backend/data/
 .venv/
+dist/

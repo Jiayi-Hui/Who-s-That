@@ -25,6 +25,18 @@ Open:
 http://127.0.0.1:8000
 ```
 
+## Deploy Frontend To Vercel
+
+Vercel should host the static frontend only. The InsightFace / ArcFace backend should run on a persistent Python host such as Render, Fly.io, Railway, or a VPS.
+
+Set this Vercel environment variable:
+
+```text
+WHOS_THAT_API_BASE_URL=https://your-arcface-backend.example.com
+```
+
+Then deploy the repo to Vercel. The build copies `frontend/` into `dist/` and injects the API base URL into `config.js`.
+
 ## API Shape
 
 `POST /recognize`

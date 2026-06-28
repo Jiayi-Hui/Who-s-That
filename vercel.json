@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "buildCommand": "bash scripts/build-vercel.sh",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+

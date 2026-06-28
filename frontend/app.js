@@ -5,6 +5,8 @@ const state = {
   capturedBlob: null,
 };
 
+const API_BASE_URL = (window.WHOS_THAT_API_BASE_URL || "").replace(/\/$/, "");
+
 const els = {
   apiStatus: document.querySelector("#apiStatus"),
   personForm: document.querySelector("#personForm"),
@@ -25,7 +27,7 @@ const els = {
 };
 
 async function api(path, options = {}) {
-  const response = await fetch(path, options);
+  const response = await fetch(`${API_BASE_URL}${path}`, options);
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(body.detail || body.error || `Request failed: ${response.status}`);
@@ -311,4 +313,3 @@ els.photoInput.addEventListener("change", handlePhotoChange);
 els.recognizeButton.addEventListener("click", recognize);
 
 loadPeople();
-
