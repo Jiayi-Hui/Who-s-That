@@ -3,8 +3,6 @@ const state = {
   selectedFile: null,
   cameraStream: null,
   capturedBlob: null,
-  faceReady: false,
-  descriptors: {},
 };
 
 const els = {
@@ -28,26 +26,30 @@ const els = {
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
+  const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed: ${response.status}`);
+    throw new Error(body.detail || body.error || `Request failed: ${response.status}`);
   }
-  return response.json();
+  return body;
 }
 
 async function loadPeople() {
   try {
+    const health = await api("/health");
+    const model = health.recognizer;
+    els.apiStatus.textContent = model.available ? "ArcFace ready" : "ArcFace setup needed";
+    els.apiStatus.classList.toggle("online", model.available);
+    els.resultBox.textContent = model.available
+      ? `Backend ready: ${model.name} (${model.embedding}).`
+      : `Backend running, but ArcFace is unavailable: ${model.error || "missing dependencies"}`;
+
     const data = await api("/api/people");
     state.people = data.people;
-    els.apiStatus.textContent = "Local API ready";
-    els.apiStatus.classList.add("online");
   } catch (error) {
-    state.people = JSON.parse(localStorage.getItem("people") || "[]");
-    els.apiStatus.textContent = "Static fallback";
+    els.apiStatus.textContent = "API offline";
+    els.resultBox.textContent = error.message;
   }
-  loadStoredDescriptors();
   renderPeople();
-  loadFaceModels();
 }
 
 function renderPeople() {
@@ -60,13 +62,14 @@ function renderPeople() {
   }
 
   for (const person of state.people) {
+    const count = person.face_sample_count || 0;
     const item = document.createElement("div");
     item.className = "person-item";
     item.innerHTML = `
       <strong>${escapeHtml(person.name)}</strong>
       <span>${escapeHtml(joinParts([person.title, person.company]))}</span>
       <small>${escapeHtml(person.note || "No note yet")}</small>
-      <em>${descriptorCount(person.id)} face sample${descriptorCount(person.id) === 1 ? "" : "s"}</em>
+      <em>${count} ArcFace sample${count === 1 ? "" : "s"}</em>
       <label class="sample-upload">
         Add face photos
         <input type="file" accept="image/*" multiple data-person-id="${escapeHtml(person.id)}">
@@ -95,7 +98,6 @@ async function addPerson(event) {
     title: form.get("title"),
     note: form.get("note"),
   };
-  let savedPerson;
 
   try {
     const data = await api("/api/people", {
@@ -103,96 +105,46 @@ async function addPerson(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(person),
     });
-    savedPerson = data.person;
-    state.people.push(savedPerson);
-  } catch (error) {
-    person.id = `local-${crypto.randomUUID()}`;
-    savedPerson = person;
-    state.people.push(savedPerson);
-    localStorage.setItem("people", JSON.stringify(state.people));
-  }
-
-  if (referencePhotos.length > 0) {
-    els.resultBox.textContent = `Creating ${savedPerson.name} and enrolling reference photos...`;
-    await enrollReferencePhotos(savedPerson.id, referencePhotos);
-  } else {
+    state.people.push(data.person);
     renderPeople();
-    els.resultBox.textContent = `Created ${savedPerson.name}. Add face photos before recognition.`;
-  }
-  els.personForm.reset();
-}
 
-async function loadFaceModels() {
-  if (!window.faceapi) {
-    els.resultBox.textContent = "Face engine failed to load. Check internet access, then reload.";
-    return;
-  }
-
-  els.resultBox.textContent = "Loading face recognition model...";
-  try {
-    const modelUrl = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
-    await Promise.all([
-      faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl),
-      faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl),
-      faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl),
-    ]);
-    state.faceReady = true;
-    els.resultBox.textContent = "Face engine ready. Add reference photos, then use camera capture.";
+    if (referencePhotos.length > 0) {
+      els.resultBox.textContent = `Creating ${data.person.name} and enrolling ArcFace samples...`;
+      await enrollReferencePhotos(data.person.id, referencePhotos);
+    } else {
+      els.resultBox.textContent = `Created ${data.person.name}. Add face photos before recognition.`;
+    }
+    els.personForm.reset();
   } catch (error) {
-    els.resultBox.textContent = "Could not load face recognition model. Check the network, then reload.";
+    els.resultBox.textContent = error.message;
   }
-}
-
-function loadStoredDescriptors() {
-  const raw = localStorage.getItem("faceDescriptors");
-  if (!raw) return;
-  const stored = JSON.parse(raw);
-  state.descriptors = Object.fromEntries(
-    Object.entries(stored).map(([personId, descriptors]) => [
-      personId,
-      descriptors.map((descriptor) => Float32Array.from(descriptor)),
-    ])
-  );
-}
-
-function saveStoredDescriptors() {
-  const serializable = Object.fromEntries(
-    Object.entries(state.descriptors).map(([personId, descriptors]) => [
-      personId,
-      descriptors.map((descriptor) => Array.from(descriptor)),
-    ])
-  );
-  localStorage.setItem("faceDescriptors", JSON.stringify(serializable));
 }
 
 async function enrollReferencePhotos(personId, files) {
-  if (!state.faceReady) {
-    await loadFaceModels();
-  }
-  if (!state.faceReady) return;
-
-  const person = state.people.find((entry) => entry.id === personId);
-  els.resultBox.textContent = `Reading ${files.length} reference photo${files.length === 1 ? "" : "s"} for ${person?.name || "this person"}...`;
-  const descriptors = [];
+  const body = new FormData();
   for (const file of files) {
-    const img = await imageFromBlob(file);
-    const detection = await faceapi
-      .detectSingleFace(img)
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-    if (detection) descriptors.push(detection.descriptor);
+    body.append("files", file, file.name);
   }
 
-  state.descriptors[personId] = [
-    ...(state.descriptors[personId] || []),
-    ...descriptors,
-  ];
-  saveStoredDescriptors();
-  renderPeople();
-  els.resultBox.textContent =
-    descriptors.length > 0
-      ? `Saved ${descriptors.length} usable face sample${descriptors.length === 1 ? "" : "s"} for ${person?.name || "this person"}.`
-      : `No face found in the reference photos for ${person?.name || "this person"}. Try a clear front-facing photo.`;
+  try {
+    els.resultBox.textContent = `Sending ${files.length} reference photo${files.length === 1 ? "" : "s"} to ArcFace backend...`;
+    const result = await api(`/api/people/${personId}/faces`, {
+      method: "POST",
+      body,
+    });
+    const index = state.people.findIndex((person) => person.id === personId);
+    if (index >= 0) state.people[index] = result.person;
+    renderPeople();
+
+    const rejected = result.rejected?.length || 0;
+    els.resultBox.innerHTML = `
+      <strong>Saved ${result.accepted.length} ArcFace sample${result.accepted.length === 1 ? "" : "s"}</strong>
+      <span>${rejected} rejected.</span>
+      ${renderRejected(result.rejected || [])}
+    `;
+  } catch (error) {
+    els.resultBox.textContent = error.message;
+  }
 }
 
 function handlePhotoChange(event) {
@@ -245,7 +197,7 @@ async function captureFrame() {
   context.drawImage(els.cameraPreview, 0, 0, canvas.width, canvas.height);
 
   state.capturedBlob = await new Promise((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", 0.9);
+    canvas.toBlob(resolve, "image/jpeg", 0.92);
   });
   state.selectedFile = null;
   els.photoInput.value = "";
@@ -254,91 +206,44 @@ async function captureFrame() {
   els.cameraPreview.classList.remove("active");
   els.recognizeButton.disabled = false;
   els.emptyPreview.hidden = true;
-  els.resultBox.textContent = "Captured one camera frame. Run recognition to update the HUD.";
+  els.resultBox.textContent = "Captured one camera frame. Send it to ArcFace recognition.";
 }
 
 async function recognize() {
   const image = state.capturedBlob || state.selectedFile;
   if (!image) return;
+
   els.recognizeButton.disabled = true;
   els.recognizeButton.textContent = "Recognizing";
-  els.resultBox.textContent = "Looking for a face in the captured image...";
+  els.resultBox.textContent = "Sending image to /recognize...";
 
-  const realResult = await recognizeWithFaceApi(image);
-  if (realResult) {
-    showResult(realResult);
-    showHud(realResult);
+  const body = new FormData();
+  body.append("image", image, state.capturedBlob ? "camera-frame.jpg" : state.selectedFile.name);
+
+  try {
+    const result = await api("/recognize", {
+      method: "POST",
+      body,
+    });
+    showResult(result);
+    showHud(result);
+  } catch (error) {
+    showResult({
+      matched: false,
+      reason: error.message,
+      confidence: 0,
+      person: null,
+    });
+    showHud({
+      matched: false,
+      reason: error.message,
+      confidence: 0,
+      person: null,
+    });
+  } finally {
     els.recognizeButton.disabled = false;
     els.recognizeButton.textContent = "Recognize Captured Face";
-    return;
   }
-
-  els.recognizeButton.disabled = false;
-  els.recognizeButton.textContent = "Recognize Captured Face";
-}
-
-async function recognizeWithFaceApi(imageBlob) {
-  if (!state.faceReady) {
-    await loadFaceModels();
-  }
-  if (!state.faceReady) return null;
-
-  const enrolled = Object.entries(state.descriptors).filter(([, descriptors]) => descriptors.length > 0);
-  if (enrolled.length === 0) {
-    return {
-      matched: false,
-      confidence: 0,
-      person: null,
-      reason: "No reference face samples yet. Add face photos to a person first.",
-    };
-  }
-
-  const img = await imageFromBlob(imageBlob);
-  const detection = await faceapi
-    .detectSingleFace(img)
-    .withFaceLandmarks()
-    .withFaceDescriptor();
-
-  if (!detection) {
-    return {
-      matched: false,
-      confidence: 0,
-      person: null,
-      reason: "No face was detected in the captured image.",
-    };
-  }
-
-  let best = { distance: Number.POSITIVE_INFINITY, person: null };
-  for (const [personId, descriptors] of enrolled) {
-    for (const descriptor of descriptors) {
-      const distance = faceapi.euclideanDistance(detection.descriptor, descriptor);
-      if (distance < best.distance) {
-        best = {
-          distance,
-          person: state.people.find((person) => person.id === personId),
-        };
-      }
-    }
-  }
-
-  const threshold = 0.56;
-  if (!best.person || best.distance > threshold) {
-    return {
-      matched: false,
-      confidence: Math.max(0, 1 - best.distance),
-      person: null,
-      reason: best.person
-        ? `A face was detected. Closest match was ${best.person.name}, but distance ${best.distance.toFixed(3)} is above threshold ${threshold}.`
-        : "A face was detected, but no enrolled person could be compared.",
-    };
-  }
-
-  return {
-    matched: true,
-    confidence: Math.max(0.01, Math.min(0.99, 1 - best.distance)),
-    person: best.person,
-    distance: best.distance,
-  };
 }
 
 function showResult(result) {
@@ -346,6 +251,8 @@ function showResult(result) {
     els.resultBox.innerHTML = `
       <strong>未确认</strong>
       <span>${escapeHtml(result.reason || "No confident match.")}</span>
+      ${result.confidence == null ? "" : `<span>Score: ${Number(result.confidence).toFixed(3)}</span>`}
+      ${result.threshold == null ? "" : `<span>Threshold: ${Number(result.threshold).toFixed(3)}</span>`}
     `;
     return;
   }
@@ -355,25 +262,32 @@ function showResult(result) {
     <strong>Recognized: ${escapeHtml(person.name)}</strong>
     <span>${escapeHtml(joinParts([person.title, person.company]))}</span>
     <span>${escapeHtml(person.note || "No note")}</span>
-    <span>Confidence: ${Math.round(result.confidence * 100)}%</span>
-    ${result.distance == null ? "" : `<span>Distance: ${result.distance.toFixed(3)}</span>`}
+    <span>ArcFace score: ${Number(result.score || result.confidence).toFixed(3)}</span>
+    <span>Threshold: ${Number(result.threshold).toFixed(3)}</span>
   `;
 }
 
 function showHud(result) {
+  const hud = result.hud || {};
   if (!result.matched || !result.person) {
-    els.hudName.textContent = "未确认";
-    els.hudTitle.textContent = "No confident match";
-    els.hudNote.textContent = result.reason || "Try another angle or better lighting.";
+    els.hudName.textContent = hud.line1 || "未确认";
+    els.hudTitle.textContent = hud.line2 || "No confident match";
+    els.hudNote.textContent = hud.line3 || result.reason || "Try another angle or better lighting.";
     els.hudConfidence.textContent = "--";
     return;
   }
 
-  const person = result.person;
-  els.hudName.textContent = person.name;
-  els.hudTitle.textContent = joinParts([person.title, person.company]) || "Known attendee";
-  els.hudNote.textContent = person.note || "No context note yet.";
+  els.hudName.textContent = hud.line1 || result.person.name;
+  els.hudTitle.textContent = hud.line2 || joinParts([result.person.title, result.person.company]) || "Known attendee";
+  els.hudNote.textContent = hud.line3 || result.person.note || "No context note yet.";
   els.hudConfidence.textContent = `${Math.round(result.confidence * 100)}%`;
+}
+
+function renderRejected(rejected) {
+  if (!rejected.length) return "";
+  return rejected
+    .map((item) => `<span>${escapeHtml(item.filename || "photo")}: ${escapeHtml(item.reason)}</span>`)
+    .join("");
 }
 
 function joinParts(parts) {
@@ -390,19 +304,6 @@ function escapeHtml(value) {
   }[char]));
 }
 
-function descriptorCount(personId) {
-  return state.descriptors[personId]?.length || 0;
-}
-
-function imageFromBlob(blob) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(blob);
-  });
-}
-
 els.personForm.addEventListener("submit", addPerson);
 els.startCameraButton.addEventListener("click", startCamera);
 els.captureButton.addEventListener("click", captureFrame);
@@ -410,3 +311,4 @@ els.photoInput.addEventListener("change", handlePhotoChange);
 els.recognizeButton.addEventListener("click", recognize);
 
 loadPeople();
+
